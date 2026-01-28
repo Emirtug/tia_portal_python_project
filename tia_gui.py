@@ -5,7 +5,6 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QFrame, QScrollArea, QCheckBox, QProgressBar, QTableWidget, QTableWidgetItem, QMessageBox, QDialog, QComboBox, QStyledItemDelegate, QTextEdit)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QFont
-from tag_definitions import TAGS
 
 # Data Types
 TIA_DATA_TYPES = ['Bool', 'Byte', 'Char', 'Int', 'UInt', 'DInt', 'UDInt', 'Word', 
@@ -819,7 +818,6 @@ class TIAPortalGUI(QMainWindow):
             return
         
         old_tag_name = self._old_tag_names.get(row, tag_name)
-        tag_info = TAGS.get(self.current_selected_station, {}).get(old_tag_name if old_tag_name else tag_name, {})
         
         if self.current_selected_station not in self.tag_values:
             self.tag_values[self.current_selected_station] = {}
@@ -829,9 +827,9 @@ class TIAPortalGUI(QMainWindow):
                 self.tag_values[self.current_selected_station][tag_name] = self.tag_values[self.current_selected_station].pop(old_tag_name)
             else:
                 self.tag_values[self.current_selected_station][tag_name] = {
-                    'db': tag_info.get('db', ''),
-                    'address': tag_info.get('address', ''),
-                    'type': tag_info.get('type', 'real'),
+                    'db': '',
+                    'address': '',
+                    'type': 'real',
                     'value': '-',
                     'display_format': 'DEC',
                     'sending_format': 'DEC'
@@ -843,9 +841,9 @@ class TIAPortalGUI(QMainWindow):
         
         if tag_name not in self.tag_values[self.current_selected_station]:
             self.tag_values[self.current_selected_station][tag_name] = {
-                'db': tag_info.get('db', ''),
-                'address': tag_info.get('address', ''),
-                'type': tag_info.get('type', 'real'),
+                'db': '',
+                'address': '',
+                'type': 'real',
                 'value': '-',
                 'display_format': 'DEC',
                 'sending_format': 'DEC'
