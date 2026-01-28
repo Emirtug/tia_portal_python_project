@@ -57,7 +57,7 @@ STATIONS = {
         'port': 102,
     },
     'Simulator_localhost': {
-        'ip': 'localhost',
+        'ip': '10.76.106.152',
         'rack': 0,
         'slot': 1,
         'port': 102,

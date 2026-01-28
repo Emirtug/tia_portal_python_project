@@ -1,0 +1,88 @@
+{
+    "Module02_192.168.0.20": {
+        "canbus_manager": {
+            "address": "M0.0",
+            "db": "",
+            "type": "Bool",
+            "value": "OFF",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        },
+        "yenidenemettag": {
+            "db": "",
+            "address": "\u01310.1",
+            "type": "Char",
+            "value": "5",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        },
+        "yeni": {
+            "db": "",
+            "address": "\u01310.2",
+            "type": "real",
+            "value": "-",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    },
+    "Simulator_localhost": {
+        "canbus_manager": {
+            "db": "",
+            "address": "M0.0",
+            "type": "Bool",
+            "value": "OFF",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    },
+    "Module04_192.168.0.40": {
+        "canbus_manager": {
+            "address": "M0.0",
+            "db": "",
+            "type": "Bool",
+            "value": "ON",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    },
+    "Module03_192.168.0.30": {
+        "canbus_manager": {
+            "db": "",
+            "address": "M0.0",
+            "type": "Bool",
+            "value": "ON",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    },
+    "Module05_192.168.0.50": {
+        "canbus_manager": {
+            "db": "",
+            "address": "M0.0",
+            "type": "Bool",
+            "value": "OFF",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    },
+    "Module06_192.168.0.60": {
+        "canbus_manager": {
+            "db": "",
+            "address": "M0.0",
+            "type": "Bool",
+            "value": "OFF",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    },
+    "Module09_192.168.0.90": {
+        "canbus_manager": {
+            "address": "M0.0",
+            "db": "",
+            "type": "Bool",
+            "value": "ON",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    }
+}

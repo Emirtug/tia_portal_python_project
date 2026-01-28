@@ -4,6 +4,7 @@ Handles communication with Siemens PLCs via Snap7
 """
 
 from snap7.client import Client
+from snap7 import types as snap7_types
 from config import STATIONS, CONNECTION_TIMEOUT
 from tag_definitions import TAGS, DATA_TYPES
 import struct
@@ -146,6 +147,59 @@ class PLCClient:
         for tag_name in TAGS.keys():
             results[tag_name] = self.read_tag(tag_name)
         return results
+    
+    def read_areas(self):
+        """
+        Read all PLC areas (Inputs, Outputs, Markers) dynamically
+        Returns:
+            dict: Nested dictionary with area data and bit values
+        """
+        if not self.connected:
+            return {}
+        
+        areas_data = {}
+        
+        try:
+            for area_key, area_info in PLC_AREAS.items():
+                area_name = area_info['name']
+                area = self._get_area_enum(area_info['area'])
+                size = area_info['size']
+                
+                try:
+                    data = self.client.read_area(area, 0, 0, size)
+                    
+                    # Parse bits from bytes
+                    bits = {}
+                    for byte_idx, byte_val in enumerate(data):
+                        for bit_idx in range(8):
+                            bit_name = f"{area_info['area']}{byte_idx}.{bit_idx}"
+                            bits[bit_name] = bool(byte_val & (1 << bit_idx))
+                    
+                    areas_data[area_name] = {
+                        'raw_bytes': list(data),
+                        'bits': bits,
+                    }
+                    print(f"✓ Read {area_name}")
+                except Exception as e:
+                    print(f"✗ Error reading {area_name}: {str(e)}")
+                    areas_data[area_name] = {'error': str(e)}
+            
+            return areas_data
+            
+        except Exception as e:
+            print(f"Error reading areas: {str(e)}")
+            return {}
+    
+    @staticmethod
+    def _get_area_enum(area_name):
+        """Convert area string to snap7 enum"""
+        areas = {
+            'PE': snap7_types.Areas.PE,     # Inputs
+            'PA': snap7_types.Areas.PA,     # Outputs
+            'MK': snap7_types.Areas.MK,     # Markers
+            'DB': snap7_types.Areas.DB,     # Data blocks
+        }
+        return areas.get(area_name, snap7_types.Areas.PE)
     
     def get_status(self):
         """Get connection status"""
