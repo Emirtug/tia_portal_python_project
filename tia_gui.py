@@ -1,10 +1,14 @@
 import sys
 import json
 import os
+import subprocess
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QPushButton, QFrame, QScrollArea, QCheckBox, QProgressBar, QTableWidget, QTableWidgetItem, QMessageBox, QDialog, QComboBox, QStyledItemDelegate, QTextEdit)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QFont
+
+# PLC Controller import (snap7 wrapper)
+from plc_controller import PLCController
 
 # Data Types
 TIA_DATA_TYPES = ['Bool', 'Byte', 'Char', 'Int', 'UInt', 'DInt', 'UDInt', 'Word', 
@@ -49,9 +53,22 @@ class TIAPortalGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.tag_values_file = 'tag_values.json'
+        self.config_file = 'plc_config.json'
         self.tag_values = {}
+        self.plc_config = {}
         self.left_panel_visible = True
         self.has_unsaved_changes = False
+        
+        self.plc_controller = PLCController()
+        self.plc_switch_enabled = False
+        
+        self.snap7_stations = ['PLCSim Station', 'Module02_192.168.0.20']
+        
+        self.plc_read_timer = QTimer()
+        self.plc_read_timer.timeout.connect(self.read_plc_tags)
+        self.plc_read_timer.setInterval(1000)
+        
+        self.load_config()
         self.load_tag_values()
         self.initUI()
         self.apply_theme()
@@ -133,10 +150,29 @@ class TIAPortalGUI(QMainWindow):
             'Module07_192.168.0.70',
             'Module08_192.168.0.80',
             'Module09_192.168.0.90',
-            'Simulator_localhost'
+            'PLCSim Station'
         ])
         self.station_combo.currentIndexChanged.connect(self.on_station_changed)
         left_layout.addWidget(self.station_combo)
+        
+        # PLCSim IP Settings Button (only visible when PLCSim selected)
+        self.simulator_ip_btn = QPushButton('Edit IP')
+        self.simulator_ip_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        self.simulator_ip_btn.clicked.connect(self.edit_simulator_ip)
+        self.simulator_ip_btn.setVisible(False)
+        left_layout.addWidget(self.simulator_ip_btn)
         
         left_layout.addSpacing(20)
         
@@ -175,6 +211,63 @@ class TIAPortalGUI(QMainWindow):
         self.can_status_label = QLabel('● Inactive')
         self.can_status_label.setStyleSheet("color: #95a5a6; font-weight: bold;")
         can_status_layout.addWidget(self.can_status_label)
+        
+        can_status_layout.addSpacing(10)
+        
+        plc_switch_container = QHBoxLayout()
+        plc_switch_label = QLabel('PLC Connection:')
+        plc_switch_label.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 9pt;")
+        plc_switch_container.addWidget(plc_switch_label)
+        
+        self.plc_connection_switch = QCheckBox()
+        self.plc_connection_switch.setStyleSheet("""
+            QCheckBox {
+                spacing: 5px;
+            }
+            QCheckBox::indicator {
+                width: 40px;
+                height: 20px;
+                border-radius: 10px;
+                background-color: #bdc3c7;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #27ae60;
+            }
+            QCheckBox::indicator:disabled {
+                background-color: #e74c3c;
+            }
+        """)
+        self.plc_connection_switch.setEnabled(False)
+        self.plc_connection_switch.stateChanged.connect(self.on_plc_switch_changed)
+        plc_switch_container.addWidget(self.plc_connection_switch)
+        plc_switch_container.addStretch()
+        
+        can_status_layout.addLayout(plc_switch_container)
+        
+        self.plc_connection_status_label = QLabel('Check connection first')
+        self.plc_connection_status_label.setStyleSheet("color: #7f8c8d; font-size: 8pt; font-style: italic;")
+        can_status_layout.addWidget(self.plc_connection_status_label)
+        
+        check_connection_btn = QPushButton('Check PLC Connection')
+        check_connection_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+            QPushButton:pressed {
+                background-color: #1f6391;
+            }
+        """)
+        check_connection_btn.clicked.connect(self.check_plc_connection)
+        can_status_layout.addWidget(check_connection_btn)
         
         left_layout.addWidget(can_status_frame)
         left_layout.addStretch()
@@ -460,12 +553,130 @@ class TIAPortalGUI(QMainWindow):
             self.error_log.verticalScrollBar().maximum()
         )
     
+    def check_plc_connection(self):
+        """Check PLC connection via ping"""
+        if self.current_selected_station not in self.snap7_stations:
+            QMessageBox.warning(self, 'Wrong Station', 'This station does not support Snap7 PLC connection!')
+            return
+        
+        if self.current_selected_station == 'PLCSim Station':
+            ip = self.plc_controller.get_simulator_ip()
+        else:
+            ip = self.current_selected_station.split('_')[1] if '_' in self.current_selected_station else None
+            if not ip:
+                QMessageBox.warning(self, 'Error', 'Cannot extract IP from station name!')
+                return
+        
+        self.add_log(self.current_selected_station, f"Checking connection to {ip}...")
+        
+        try:
+            result = subprocess.run(
+                ['ping', '-n', '1', '-w', '1000', ip],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            
+            if result.returncode == 0:
+                self.plc_switch_enabled = True
+                self.plc_connection_switch.setEnabled(True)
+                self.plc_connection_status_label.setText(f'✓ {ip} reachable')
+                self.plc_connection_status_label.setStyleSheet("color: #27ae60; font-size: 8pt; font-weight: bold;")
+                self.add_log(self.current_selected_station, f"✓ Connection OK - {ip} is reachable")
+                QMessageBox.information(self, 'Connection OK', f'PLC at {ip} is reachable!\nYou can now enable PLC connection.')
+            else:
+                self.plc_switch_enabled = False
+                self.plc_connection_switch.setEnabled(False)
+                self.plc_connection_switch.setChecked(False)
+                self.plc_connection_status_label.setText(f'✗ {ip} not reachable')
+                self.plc_connection_status_label.setStyleSheet("color: #e74c3c; font-size: 8pt; font-weight: bold;")
+                self.add_log(self.current_selected_station, f"✗ ERROR: Cannot reach {ip}")
+                QMessageBox.critical(self, 'Connection Failed', f'Cannot reach PLC at {ip}\n\nPlease check:\n- PLC is running\n- IP address is correct\n- Network connection')
+        
+        except subprocess.TimeoutExpired:
+            self.plc_switch_enabled = False
+            self.plc_connection_switch.setEnabled(False)
+            self.plc_connection_switch.setChecked(False)
+            self.plc_connection_status_label.setText(f'✗ Timeout')
+            self.plc_connection_status_label.setStyleSheet("color: #e74c3c; font-size: 8pt; font-weight: bold;")
+            self.add_log(self.current_selected_station, f"✗ ERROR: Timeout - No response from {ip}")
+            QMessageBox.critical(self, 'Connection Timeout', f'No response from PLC at {ip}')
+        
+        except Exception as e:
+            self.plc_switch_enabled = False
+            self.plc_connection_switch.setEnabled(False)
+            self.plc_connection_switch.setChecked(False)
+            self.plc_connection_status_label.setText(f'✗ Error')
+            self.plc_connection_status_label.setStyleSheet("color: #e74c3c; font-size: 8pt; font-weight: bold;")
+            self.add_log(self.current_selected_station, f"✗ ERROR: {str(e)}")
+            QMessageBox.critical(self, 'Connection Error', f'Error checking connection:\n{str(e)}')
+    
+    def on_plc_switch_changed(self, state):
+        """Handle PLC connection switch toggle"""
+        if state == Qt.Checked:
+            if self.plc_controller.is_connected():
+                return
+            
+            if self.current_selected_station == 'PLCSim Station':
+                success, message = self.plc_controller.connect_plcsim()
+            else:
+                ip = self.current_selected_station.split('_')[1] if '_' in self.current_selected_station else None
+                if not ip:
+                    QMessageBox.critical(self, 'Error', 'Cannot extract IP from station name!')
+                    self.plc_connection_switch.setChecked(False)
+                    return
+                
+                rack = 0
+                slot = 1
+                if self.plc_controller.plc.connect(ip, rack, slot):
+                    self.plc_controller.connected = True
+                    success = True
+                    message = f"Connected to {ip}"
+                else:
+                    success = False
+                    message = f"Failed to connect to {ip}"
+            
+            if success:
+                self.add_log(self.current_selected_station, f"✓ PLC connected - {message}")
+                self.plc_connection_status_label.setText('✓ PLC Connected')
+                self.plc_connection_status_label.setStyleSheet("color: #27ae60; font-size: 8pt; font-weight: bold;")
+                
+                success, msg = self.plc_controller.send_tag("Q64.0", 1, "Byte")
+                if success:
+                    print(f"PLC Switch ON -> QB64 = 1")
+                    self.add_log(self.current_selected_station, "PLC Switch ON -> QB64 = 1")
+                    self.plc_read_timer.start()
+            else:
+                self.plc_connection_switch.setChecked(False)
+                self.plc_connection_status_label.setText(f'✗ Connection failed')
+                self.plc_connection_status_label.setStyleSheet("color: #e74c3c; font-size: 8pt; font-weight: bold;")
+                self.add_log(self.current_selected_station, f"✗ ERROR: PLC connection failed - {message}")
+                QMessageBox.critical(self, 'Connection Failed', f'Failed to connect to PLC:\n{message}')
+        else:
+            if self.plc_controller.is_connected():
+                success, msg = self.plc_controller.send_tag("Q64.0", 0, "Byte")
+                if success:
+                    print(f"PLC Switch OFF -> QB64 = 0")
+                    self.add_log(self.current_selected_station, "PLC Switch OFF -> QB64 = 0")
+                
+                self.plc_read_timer.stop()
+                self.plc_controller.disconnect_plcsim()
+                self.add_log(self.current_selected_station, "PLC disconnected")
+                self.plc_connection_status_label.setText('Disconnected')
+                self.plc_connection_status_label.setStyleSheet("color: #7f8c8d; font-size: 8pt; font-style: italic;")
+    
     def on_station_changed(self, index):
         """Handle station selection from left combo"""
         if index > 0:
             station = self.station_combo.currentText()
             self.load_station_tags(station)
             self.current_selected_station = station
+            
+            # Show IP edit button only when PLCSim Station is selected
+            if station == 'PLCSim Station':
+                self.simulator_ip_btn.setVisible(True)
+            else:
+                self.simulator_ip_btn.setVisible(False)
             
             # Restore progress bar value for this station
             progress = self.station_progress.get(station, 0)
@@ -530,29 +741,45 @@ class TIAPortalGUI(QMainWindow):
         else:
             station = self.current_selected_station
             
-            # FIRST: Reset progress bar immediately
+            # FIRST: Send 0 to QB64 when CAN Bus is turned OFF
+            if station == 'PLCSim Station':
+                if not self.plc_controller.is_connected():
+                    success, message = self.plc_controller.connect_plcsim()
+                    if success:
+                        print(f"PLC Auto-connect: {message}")
+                
+                if self.plc_controller.is_connected():
+                    success, msg = self.plc_controller.send_tag("Q64.0", 0, "Byte")
+                    if success:
+                        print(f"CAN Bus OFF -> QB64 = 0")
+                        self.add_log(station, "CAN Bus OFF -> QB64 = 0")
+                        self.plc_read_timer.stop()
+                    else:
+                        print(f"Failed to send QB64: {msg}")
+            
+            # SECOND: Reset progress bar immediately
             self.progress_bar.setValue(0)
             if station:
                 self.station_progress[station] = 0
             
-            # SECOND: Update canbus_manager tag value to OFF
+            # THIRD: Update canbus_manager tag value to OFF
             if station and station in self.tag_values:
                 if 'canbus_manager' in self.tag_values[station]:
                     self.tag_values[station]['canbus_manager']['value'] = 'OFF'
                     self.save_tag_values()
             
-            # THIRD: Mark this station as disconnected
+            # FOURTH: Mark this station as disconnected
             if station:
                 self.station_connections[station] = False
             
-            # FOURTH: Log disconnection
+            # FIFTH: Log disconnection
             if station:
                 self.add_log(station, "CAN Bus disconnected - canbus_manager tag deactivated")
             
-            # FIFTH: Update display for this station
+            # SIXTH: Update display for this station
             self.update_status_display(station)
             
-            # SIXTH: Show disconnect confirmation dialog
+            # SEVENTH: Show disconnect confirmation dialog
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Information)
             msg.setWindowTitle('Disconnected')
@@ -577,6 +804,23 @@ class TIAPortalGUI(QMainWindow):
         
         if self.progress_value >= 100:
             self.timer.stop()
+            
+            # Send 1 to QB64 when CAN Bus connection completes
+            if self.current_connecting_station == 'PLCSim Station':
+                if not self.plc_controller.is_connected():
+                    success, message = self.plc_controller.connect_plcsim()
+                    if success:
+                        print(f"PLC Auto-connect: {message}")
+                
+                if self.plc_controller.is_connected():
+                    success, msg = self.plc_controller.send_tag("Q64.0", 1, "Byte")
+                    if success:
+                        print(f"CAN Bus ON -> QB64 = 1")
+                        self.add_log(self.current_connecting_station, "CAN Bus ON -> QB64 = 1")
+                        self.plc_read_timer.start()
+                    else:
+                        print(f"Failed to send QB64: {msg}")
+            
             # Show success dialog AFTER progress bar completes
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Information)
@@ -584,6 +828,32 @@ class TIAPortalGUI(QMainWindow):
             msg.setText(f'CAN Bus connected to {self.current_connecting_station}!')
             msg.setStandardButtons(QMessageBox.Ok)
             msg.exec_()
+    
+    def read_plc_tags(self):
+        """Periodically read all tags from PLC and update PLC Value column"""
+        if self.current_selected_station not in self.snap7_stations:
+            return
+        
+        if not self.plc_controller.is_connected():
+            return
+        
+        for row in range(self.tag_table.rowCount()):
+            address_item = self.tag_table.item(row, 1)
+            type_item = self.tag_table.item(row, 2)
+            plc_value_item = self.tag_table.item(row, 6)
+            
+            if not address_item or not address_item.text().strip():
+                continue
+            
+            address = address_item.text().strip()
+            data_type = type_item.text() if type_item else 'Byte'
+            
+            success, value, msg = self.plc_controller.read_tag(address, data_type)
+            
+            if success and plc_value_item:
+                self.tag_table.blockSignals(True)
+                plc_value_item.setText(str(value))
+                self.tag_table.blockSignals(False)
     
     def update_status_display(self, station):
         """Update PLC and CAN Bus status display for current station"""
@@ -656,16 +926,13 @@ class TIAPortalGUI(QMainWindow):
         
         all_tags = {}
         
-        # Load ONLY from JSON (user-saved tags), NOT from TAGS definition
         if station in self.tag_values:
             for tag_name, stored_tag in self.tag_values[station].items():
-                # Skip empty tag names
-                if not tag_name or tag_name.strip() == '':
+                if not tag_name or not tag_name.strip():
                     continue
                     
                 if isinstance(stored_tag, dict):
-                    tag_key = tag_name.lower()
-                    all_tags[tag_key] = {
+                    all_tags[tag_name] = {
                         'address': str(stored_tag.get('address', '')),
                         'db': str(stored_tag.get('db', '')),
                         'type': stored_tag.get('type', 'real'),
@@ -680,8 +947,7 @@ class TIAPortalGUI(QMainWindow):
         for tag_name, tag_data in all_tags.items():
             self._old_tag_names[row] = tag_name
             
-            name_text = tag_name.capitalize() if isinstance(tag_name, str) else tag_name
-            name_item = QTableWidgetItem(name_text)
+            name_item = QTableWidgetItem(tag_name)
             name_item.setFont(QFont('Arial', 9))
             self.tag_table.setItem(row, 0, name_item)
             
@@ -689,8 +955,7 @@ class TIAPortalGUI(QMainWindow):
             addr_item.setFont(QFont('Arial', 9))
             self.tag_table.setItem(row, 1, addr_item)
             
-            type_text = tag_data['type'].capitalize() if isinstance(tag_data['type'], str) else tag_data['type']
-            type_item = QTableWidgetItem(type_text)
+            type_item = QTableWidgetItem(tag_data['type'])
             type_item.setFont(QFont('Arial', 9))
             self.tag_table.setItem(row, 2, type_item)
             
@@ -775,6 +1040,28 @@ class TIAPortalGUI(QMainWindow):
         else:
             self.tag_values = {}
     
+    def load_config(self):
+        """Load PLC configuration (Simulator IP, etc.)"""
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r') as f:
+                    self.plc_config = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                self.plc_config = {}
+        
+        # Set default Simulator IP if not exists
+        if 'simulator_ip' not in self.plc_config:
+            self.plc_config['simulator_ip'] = '10.76.106.152'
+            self.save_config()
+    
+    def save_config(self):
+        """Save PLC configuration"""
+        try:
+            with open(self.config_file, 'w') as f:
+                json.dump(self.plc_config, f, indent=4)
+        except IOError:
+            pass
+    
     def save_tag_values(self):
         try:
             # Clean up empty tags before saving
@@ -811,10 +1098,9 @@ class TIAPortalGUI(QMainWindow):
         if not tag_name_item:
             return
         
-        tag_name = tag_name_item.text().lower()
+        tag_name = tag_name_item.text().strip()
         
-        # Don't process empty tag names
-        if not tag_name or tag_name.strip() == '':
+        if not tag_name:
             return
         
         old_tag_name = self._old_tag_names.get(row, tag_name)
@@ -848,9 +1134,7 @@ class TIAPortalGUI(QMainWindow):
                 'display_format': 'DEC',
                 'sending_format': 'DEC'
             }
-            # Log new tag creation
-            # Log new tag creation only if name is not empty
-            if tag_name and tag_name.strip() != '':
+            if tag_name:
                 self.add_log(self.current_selected_station, f"Tag '{tag_name}' added")
             self.has_unsaved_changes = True
             self.save_tag_values()
@@ -954,6 +1238,39 @@ class TIAPortalGUI(QMainWindow):
         msg.setStandardButtons(QMessageBox.Ok)
         msg.exec_()
     
+    def edit_simulator_ip(self):
+        """Open dialog to edit PLCSim Station IP address"""
+        from PyQt5.QtWidgets import QInputDialog, QLineEdit
+        
+        current_ip = self.plc_config.get('simulator_ip', '10.76.106.152')
+        
+        ip, ok = QInputDialog.getText(
+            self,
+            'Edit PLCSim IP',
+            'Enter PLCSim Station IP Address:',
+            QLineEdit.Normal,
+            current_ip
+        )
+        
+        if ok and ip.strip():
+            # Basic IP validation
+            parts = ip.strip().split('.')
+            if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+                self.plc_config['simulator_ip'] = ip.strip()
+                self.save_config()
+                
+                QMessageBox.information(
+                    self,
+                    'Success',
+                    f'PLCSim Station IP updated to: {ip.strip()}\n\nThis setting will be saved for future sessions.'
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    'Invalid IP',
+                    'Please enter a valid IP address (e.g., 192.168.1.100)'
+                )
+    
     def on_force_value(self, row, tag_name):
         if not self.current_selected_station:
             msg = QMessageBox()
@@ -995,33 +1312,66 @@ class TIAPortalGUI(QMainWindow):
             
             formatted_send_value = self.format_value(value_to_send, sending_format)
             
-            # Get address from table (not from TAGS definition)
+            # Get address and type from table
             address = address_item.text()
+            type_item = self.tag_table.item(row, 2)
+            data_type = type_item.text() if type_item else 'Byte'
             
-            print(f"\n{'='*60}")
-            print(f"📤 FORCE VALUE TO PLC")
-            print(f"{'='*60}")
-            print(f"Station:  {self.current_selected_station}")
-            print(f"Tag:      {tag_name}")
-            print(f"Address:  {address}")
-            print(f"Sending Format: {sending_format}")
-            print(f"Value:    {formatted_send_value}")
-            print(f"Status:   ⏳ Pending (Snap7 integration needed)")
-            print(f"{'='*60}\n")
+            if self.current_selected_station in self.snap7_stations:
+                if not self.plc_controller.is_connected():
+                    if self.current_selected_station == 'PLCSim Station':
+                        success, message = self.plc_controller.connect_plcsim()
+                    else:
+                        ip = self.current_selected_station.split('_')[1] if '_' in self.current_selected_station else None
+                        if ip:
+                            rack = 0
+                            slot = 1
+                            if self.plc_controller.plc.connect(ip, rack, slot):
+                                self.plc_controller.connected = True
+                                success = True
+                                message = f"Connected to {ip}"
+                            else:
+                                success = False
+                                message = f"Failed to connect to {ip}"
+                        else:
+                            success = False
+                            message = "Cannot extract IP"
+                    
+                    if not success:
+                        QMessageBox.critical(self, 'PLC Connection Error', f'Cannot connect to PLC:\n{message}')
+                        return
+                
+                try:
+                    int_value = int(value_to_send)
+                except ValueError:
+                    QMessageBox.warning(self, 'Invalid Value', f'Value must be numeric: {value_to_send}')
+                    return
+                
+                success, send_message = self.plc_controller.send_tag(address, int_value, data_type)
+                
+                print(f"PLC Send: {tag_name} -> {address} = {int_value} [{data_type}] - {'OK' if success else 'FAILED'}")
+                
+                status_item = self.tag_table.item(row, 7)
+                if status_item:
+                    self.tag_table.blockSignals(True)
+                    status_item.setText('✓' if success else '✗')
+                    self.tag_table.blockSignals(False)
+                
+                status_emoji = '✓' if success else '✗'
+                self.add_log(self.current_selected_station, f"{status_emoji} {tag_name} -> {address} = {int_value}")
+                
+                if not success:
+                    QMessageBox.warning(self, 'Send Failed', send_message)
             
-            # Add to shared activity log with station name
-            self.add_log(self.current_selected_station, f"Tag '{tag_name}' sent {formatted_send_value} ({sending_format}) to {address}")
-            
-            status_item = self.tag_table.item(row, 7)
-            if status_item:
-                self.tag_table.blockSignals(True)
-                status_item.setText('✓')
-                self.tag_table.blockSignals(False)
-            
-            plc_value_item = self.tag_table.item(row, 6)
-            if plc_value_item and value_to_send != '-':
-                binary_value = self.format_value(value_to_send, 'Bin')
-                plc_value_item.setText(binary_value)
+            else:
+                print(f"Force: {tag_name} -> {address} = {formatted_send_value}")
+                self.add_log(self.current_selected_station, f"{tag_name} set to {formatted_send_value}")
+                
+                status_item = self.tag_table.item(row, 7)
+                if status_item:
+                    self.tag_table.blockSignals(True)
+                    status_item.setText('✓')
+                    self.tag_table.blockSignals(False)
     
     def closeEvent(self, event):
         # Check for empty tags (incomplete entries)
@@ -1162,14 +1512,13 @@ class TIAPortalGUI(QMainWindow):
     
     def delete_tag_row(self, row):
         tag_name_item = self.tag_table.item(row, 0)
-        tag_name = tag_name_item.text().lower() if tag_name_item else ''
+        tag_name = tag_name_item.text().strip() if tag_name_item else ''
         
         if self.current_selected_station and tag_name:
             if self.current_selected_station in self.tag_values:
                 if tag_name in self.tag_values[self.current_selected_station]:
                     del self.tag_values[self.current_selected_station][tag_name]
                     self.save_tag_values()
-                    # Log deletion
                     self.add_log(self.current_selected_station, f"Tag '{tag_name}' deleted")
         
         self.tag_table.removeRow(row)

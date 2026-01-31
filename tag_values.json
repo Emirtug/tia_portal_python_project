@@ -1,25 +1,33 @@
 {
     "Module02_192.168.0.20": {
+        "yeni": {
+            "db": "",
+            "address": "I0.1",
+            "type": "Real",
+            "value": "1",
+            "display_format": "DEC",
+            "sending_format": "Bin"
+        },
+        "yardimci_role": {
+            "db": "",
+            "address": "M0.0",
+            "type": "Real",
+            "value": "0",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        },
+        "controlword": {
+            "db": "",
+            "address": "Q64",
+            "type": "Byte",
+            "value": "123",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        },
         "canbus_manager": {
             "address": "M0.0",
             "db": "",
-            "type": "Bool",
-            "value": "OFF",
-            "display_format": "DEC",
-            "sending_format": "DEC"
-        },
-        "yenidenemettag": {
-            "db": "",
-            "address": "\u01310.1",
-            "type": "Char",
-            "value": "5",
-            "display_format": "DEC",
-            "sending_format": "DEC"
-        },
-        "yeni": {
-            "db": "",
-            "address": "\u01310.2",
-            "type": "real",
+            "type": "Real",
             "value": "-",
             "display_format": "DEC",
             "sending_format": "DEC"
@@ -53,6 +61,22 @@
             "value": "ON",
             "display_format": "DEC",
             "sending_format": "DEC"
+        },
+        "yeni": {
+            "db": "",
+            "address": "\u01310.2",
+            "type": "Real",
+            "value": "-",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        },
+        "yenidenemettag": {
+            "db": "",
+            "address": "\u01310.1",
+            "type": "Char",
+            "value": "5",
+            "display_format": "DEC",
+            "sending_format": "DEC"
         }
     },
     "Module05_192.168.0.50": {
@@ -70,7 +94,7 @@
             "db": "",
             "address": "M0.0",
             "type": "Bool",
-            "value": "OFF",
+            "value": "ON",
             "display_format": "DEC",
             "sending_format": "DEC"
         }
@@ -81,6 +105,76 @@
             "db": "",
             "type": "Bool",
             "value": "ON",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    },
+    "Simulator_10.76.106.152": {
+        "canbus_manager": {
+            "address": "%QB64",
+            "db": "",
+            "type": "Int",
+            "value": "1",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    },
+    "PLCSim Station": {
+        "canbus_manager": {
+            "address": "M0.0",
+            "db": "",
+            "type": "Real",
+            "value": "-",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        },
+        "controlword": {
+            "db": "",
+            "address": "Q64",
+            "type": "Byte",
+            "value": "123",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        },
+        "yeni": {
+            "db": "",
+            "address": "I0.1",
+            "type": "Real",
+            "value": "1",
+            "display_format": "DEC",
+            "sending_format": "Bin"
+        },
+        "yardimci_role": {
+            "db": "",
+            "address": "M0.0",
+            "type": "Real",
+            "value": "0",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        }
+    },
+    "Module01_192.168.0.10": {
+        "yeni": {
+            "db": "",
+            "address": "I0.1",
+            "type": "Real",
+            "value": "1",
+            "display_format": "DEC",
+            "sending_format": "Bin"
+        },
+        "yardimci_role": {
+            "db": "",
+            "address": "M0.0",
+            "type": "real",
+            "value": "0",
+            "display_format": "DEC",
+            "sending_format": "DEC"
+        },
+        "controlword": {
+            "db": "",
+            "address": "Q64",
+            "type": "Byte",
+            "value": "123",
             "display_format": "DEC",
             "sending_format": "DEC"
         }
